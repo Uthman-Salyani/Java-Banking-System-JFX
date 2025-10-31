@@ -408,23 +408,6 @@ This project is developed for educational purposes as part of coursework require
 
 ---
 
-## 🤝 Acknowledgments
-
-- JavaFX Documentation
-- MySQL Documentation
-- Stack Overflow Community
-- Course Instructor: [Instructor Name]
-
----
-
-## 📞 Support
-
-For issues or questions regarding this project:
-- **Email**: your.email@university.edu
-- **GitHub Issues**: [Repository Issues Page]
-
----
-
 ## 📝 Version History
 
 ### v1.0.0 (Current)
