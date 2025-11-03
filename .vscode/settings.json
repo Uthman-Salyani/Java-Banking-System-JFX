@@ -1,0 +1,8 @@
+{
+    "java.project.sourcePaths": ["src"],
+    "java.project.outputPath": "bin",
+    "java.project.referencedLibraries": [
+        "lib/**/*.jar",
+        "/home/uthman/Downloads/openjfx-21.0.9_linux-x64_bin-sdk/javafx-sdk-21.0.9/lib/**/*.jar"
+    ]
+}
