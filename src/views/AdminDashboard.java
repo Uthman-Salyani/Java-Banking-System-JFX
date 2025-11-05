@@ -10,6 +10,9 @@ import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 import utils.SessionManager;
 import database.*;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 
 public class AdminDashboard {
@@ -252,34 +255,342 @@ private void showSuccess(String message) {
 }
     
     private void showAllCustomers() {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("View Customers");
-        alert.setHeaderText("Feature Coming Soon");
-        alert.setContentText("Customer list will be displayed here.");
-        alert.showAndWait();
+        try {
+            // Get all customers with their user info
+            String query = "SELECT c.customer_id, c.first_name, c.last_name, c.email, c.phone, " +
+                        "u.username, u.created_date " +
+                        "FROM customers c " +
+                        "JOIN users u ON c.user_id = u.user_id " +
+                        "ORDER BY c.customer_id DESC";
+            
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(query);
+            ResultSet rs = stmt.executeQuery();
+            
+            StringBuilder customerList = new StringBuilder();
+            customerList.append("ALL CUSTOMERS\n");
+            customerList.append("=".repeat(80)).append("\n\n");
+            
+            boolean hasCustomers = false;
+            while (rs.next()) {
+                hasCustomers = true;
+                int customerId = rs.getInt("customer_id");
+                String firstName = rs.getString("first_name");
+                String lastName = rs.getString("last_name");
+                String email = rs.getString("email");
+                String phone = rs.getString("phone");
+                String username = rs.getString("username");
+                String createdDate = rs.getString("created_date");
+                
+                customerList.append("Customer ID: ").append(customerId).append("\n");
+                customerList.append("Name: ").append(firstName).append(" ").append(lastName).append("\n");
+                customerList.append("Username: ").append(username).append("\n");
+                customerList.append("Email: ").append(email).append("\n");
+                customerList.append("Phone: ").append(phone != null ? phone : "N/A").append("\n");
+                customerList.append("Created: ").append(createdDate).append("\n");
+                customerList.append("-".repeat(80)).append("\n\n");
+            }
+            
+            rs.close();
+            stmt.close();
+            conn.close();
+            
+            if (!hasCustomers) {
+                customerList.append("No customers found.");
+            }
+            
+            // Show in scrollable dialog
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("All Customers");
+            alert.setHeaderText("Customer List");
+            
+            TextArea textArea = new TextArea(customerList.toString());
+            textArea.setEditable(false);
+            textArea.setWrapText(true);
+            textArea.setPrefSize(700, 500);
+            
+            alert.getDialogPane().setContent(textArea);
+            alert.showAndWait();
+            
+        } catch (Exception e) {
+            showError("Error: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
     
     private void showPendingLoans() {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Pending Loans");
-        alert.setHeaderText("Feature Coming Soon");
-        alert.setContentText("Pending loan applications will be shown here.");
-        alert.showAndWait();
+        try {
+            ResultSet rs = loanDAO.getPendingLoans();
+            
+            java.util.List<LoanInfo> pendingLoans = new java.util.ArrayList<>();
+            
+            while (rs.next()) {
+                LoanInfo loan = new LoanInfo();
+                loan.loanId = rs.getInt("loan_id");
+                loan.customerId = rs.getInt("customer_id");
+                loan.loanAmount = rs.getDouble("loan_amount");
+                loan.interestRate = rs.getDouble("interest_rate");
+                loan.durationMonths = rs.getInt("duration_months");
+                loan.applicationDate = rs.getString("application_date");
+                pendingLoans.add(loan);
+            }
+            rs.close();
+            
+            if (pendingLoans.isEmpty()) {
+                showSuccess("No pending loan applications.");
+                return;
+            }
+            
+            // Show each loan for approval
+            for (LoanInfo loan : pendingLoans) {
+                // Get customer name
+                String customerName = getCustomerName(loan.customerId);
+                
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                alert.setTitle("Loan Approval");
+                alert.setHeaderText("Review Loan Application");
+                
+                String loanDetails = "Customer: " + customerName + "\n" +
+                                "Loan Amount: $" + String.format("%.2f", loan.loanAmount) + "\n" +
+                                "Interest Rate: " + loan.interestRate + "%\n" +
+                                "Duration: " + loan.durationMonths + " months\n" +
+                                "Application Date: " + loan.applicationDate + "\n\n" +
+                                "Do you want to APPROVE this loan?";
+                
+                alert.setContentText(loanDetails);
+                
+                ButtonType approveButton = new ButtonType("Approve");
+                ButtonType declineButton = new ButtonType("Decline");
+                ButtonType skipButton = new ButtonType("Skip", ButtonBar.ButtonData.CANCEL_CLOSE);
+                
+                alert.getButtonTypes().setAll(approveButton, declineButton, skipButton);
+                
+                alert.showAndWait().ifPresent(response -> {
+                    try {
+                        if (response == approveButton) {
+                            loanDAO.updateLoanStatus(loan.loanId, "approved");
+                            showSuccess("Loan approved!");
+                        } else if (response == declineButton) {
+                            loanDAO.updateLoanStatus(loan.loanId, "declined");
+                            showSuccess("Loan declined.");
+                        }
+                    } catch (Exception e) {
+                        showError("Error: " + e.getMessage());
+                    }
+                });
+            }
+            
+            showSuccess("Finished reviewing all pending loans.");
+            
+        } catch (Exception e) {
+            showError("Error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // Helper class
+    private class LoanInfo {
+        int loanId;
+        int customerId;
+        double loanAmount;
+        double interestRate;
+        int durationMonths;
+        String applicationDate;
+    }
+
+    // Helper method
+    private String getCustomerName(int customerId) {
+        try {
+            ResultSet rs = customerDAO.getCustomerDetails(customerId);
+            if (rs.next()) {
+                String name = rs.getString("first_name") + " " + rs.getString("last_name");
+                rs.close();
+                return name;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "Unknown";
     }
     
     private void showPendingOverdrafts() {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Pending Overdrafts");
-        alert.setHeaderText("Feature Coming Soon");
-        alert.setContentText("Pending overdraft requests will be shown here.");
-        alert.showAndWait();
+        try {
+            ResultSet rs = overdraftDAO.getPendingOverdrafts();
+            
+            java.util.List<OverdraftInfo> pendingOverdrafts = new java.util.ArrayList<>();
+            
+            while (rs.next()) {
+                OverdraftInfo overdraft = new OverdraftInfo();
+                overdraft.overdraftId = rs.getInt("overdraft_id");
+                overdraft.accountId = rs.getInt("account_id");
+                overdraft.overdraftLimit = rs.getDouble("overdraft_limit");
+                overdraft.requestDate = rs.getString("request_date");
+                pendingOverdrafts.add(overdraft);
+            }
+            rs.close();
+            
+            if (pendingOverdrafts.isEmpty()) {
+                showSuccess("No pending overdraft requests.");
+                return;
+            }
+            
+            // Show each overdraft for approval
+            for (OverdraftInfo overdraft : pendingOverdrafts) {
+                // Get account and customer info
+                String accountInfo = getAccountInfo(overdraft.accountId);
+                
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                alert.setTitle("Overdraft Approval");
+                alert.setHeaderText("Review Overdraft Request");
+                
+                String overdraftDetails = accountInfo + "\n" +
+                                        "Requested Overdraft Limit: $" + String.format("%.2f", overdraft.overdraftLimit) + "\n" +
+                                        "Request Date: " + overdraft.requestDate + "\n\n" +
+                                        "Do you want to APPROVE this overdraft?";
+                
+                alert.setContentText(overdraftDetails);
+                
+                ButtonType approveButton = new ButtonType("Approve");
+                ButtonType declineButton = new ButtonType("Decline");
+                ButtonType skipButton = new ButtonType("Skip", ButtonBar.ButtonData.CANCEL_CLOSE);
+                
+                alert.getButtonTypes().setAll(approveButton, declineButton, skipButton);
+                
+                alert.showAndWait().ifPresent(response -> {
+                    try {
+                        if (response == approveButton) {
+                            overdraftDAO.updateOverdraftStatus(overdraft.overdraftId, "approved");
+                            showSuccess("Overdraft approved!");
+                        } else if (response == declineButton) {
+                            overdraftDAO.updateOverdraftStatus(overdraft.overdraftId, "declined");
+                            showSuccess("Overdraft declined.");
+                        }
+                    } catch (Exception e) {
+                        showError("Error: " + e.getMessage());
+                    }
+                });
+            }
+            
+            showSuccess("Finished reviewing all pending overdrafts.");
+            
+        } catch (Exception e) {
+            showError("Error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // Helper class
+    private class OverdraftInfo {
+        int overdraftId;
+        int accountId;
+        double overdraftLimit;
+        String requestDate;
+    }
+
+    // Helper method
+    private String getAccountInfo(int accountId) {
+        try {
+            ResultSet accountRs = accountDAO.getAccountById(accountId);
+            if (accountRs.next()) {
+                String accountNumber = accountRs.getString("account_number");
+                String accountType = accountRs.getString("account_type");
+                int customerId = accountRs.getInt("customer_id");
+                accountRs.close();
+                
+                String customerName = getCustomerName(customerId);
+                
+                return "Customer: " + customerName + "\n" +
+                    "Account: " + accountNumber + " (" + accountType + ")";
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "Unknown Account";
     }
     
     private void showChangePasswordForm() {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Change Password");
-        alert.setHeaderText("Feature Coming Soon");
-        alert.setContentText("Password change form will be implemented here.");
-        alert.showAndWait();
+        // Create dialog
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Change Password");
+        dialog.setHeaderText("Enter your current and new password");
+        
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(20));
+        
+        PasswordField currentPasswordField = new PasswordField();
+        currentPasswordField.setPromptText("Current Password");
+        
+        PasswordField newPasswordField = new PasswordField();
+        newPasswordField.setPromptText("New Password");
+        
+        PasswordField confirmPasswordField = new PasswordField();
+        confirmPasswordField.setPromptText("Confirm New Password");
+        
+        grid.add(new Label("Current Password:"), 0, 0);
+        grid.add(currentPasswordField, 1, 0);
+        grid.add(new Label("New Password:"), 0, 1);
+        grid.add(newPasswordField, 1, 1);
+        grid.add(new Label("Confirm Password:"), 0, 2);
+        grid.add(confirmPasswordField, 1, 2);
+        
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        
+        dialog.showAndWait().ifPresent(response -> {
+            if (response == ButtonType.OK) {
+                try {
+                    String currentPassword = currentPasswordField.getText();
+                    String newPassword = newPasswordField.getText();
+                    String confirmPassword = confirmPasswordField.getText();
+                    
+                    // Validation
+                    if (currentPassword.isEmpty() || newPassword.isEmpty() || confirmPassword.isEmpty()) {
+                        showError("All fields are required!");
+                        return;
+                    }
+                    
+                    // Check if new passwords match
+                    if (!newPassword.equals(confirmPassword)) {
+                        showError("New passwords do not match!");
+                        return;
+                    }
+                    
+                    // Check password strength
+                    if (newPassword.length() < 8) {
+                        showError("New password must be at least 8 characters long!");
+                        return;
+                    }
+                    
+                    // Verify current password
+                    String username = SessionManager.getInstance().getUsername();
+                    boolean isValid = userDAO.validateLogin(username, currentPassword);
+                    
+                    if (!isValid) {
+                        showError("Current password is incorrect!");
+                        return;
+                    }
+                    
+                    // Update password
+                    boolean updated = userDAO.updatePassword(username, newPassword);
+                    
+                    if (updated) {
+                        showSuccess("Password changed successfully!\n\nPlease login again with your new password.");
+                        
+                        // Logout user
+                        SessionManager.getInstance().endSession();
+                        LoginView loginView = new LoginView(stage);
+                        stage.setScene(loginView.createLoginScene());
+                    } else {
+                        showError("Failed to update password!");
+                    }
+                    
+                } catch (Exception e) {
+                    showError("Error: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            }
+        });
     }
 }

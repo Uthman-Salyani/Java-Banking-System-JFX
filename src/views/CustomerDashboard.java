@@ -485,18 +485,22 @@ private void showSuccess(String message) {
             ComboBox<String> accountBox = new ComboBox<>();
             java.util.HashMap<String, Integer> accountMap = new java.util.HashMap<>();
             
-            while (rs.next()) {
+           while (rs.next()) {
                 int accountId = rs.getInt("account_id");
                 String accountNumber = rs.getString("account_number");
                 String accountType = rs.getString("account_type");
-                String display = accountNumber + " (" + accountType + ")";
-                accountBox.getItems().add(display);
-                accountMap.put(display, accountId);
+                
+                // Only add current accounts (overdrafts not available for savings)
+                if (accountType.equals("current")) {
+                    String display = accountNumber + " (" + accountType + ")";
+                    accountBox.getItems().add(display);
+                    accountMap.put(display, accountId);
+                }
             }
             rs.close();
-            
+
             if (accountBox.getItems().isEmpty()) {
-                showError("No accounts found!");
+                showError("No current accounts found!\n\nOverdraft protection is only available for current accounts.");
                 return;
             }
             
@@ -574,14 +578,29 @@ private void showSuccess(String message) {
     
     private void showStatement() {
     // First, ask for password re-authentication (security feature)
-    TextInputDialog passwordDialog = new TextInputDialog();
+   // Create a proper password dialog
+    Dialog<String> passwordDialog = new Dialog<>();
     passwordDialog.setTitle("Security Verification");
     passwordDialog.setHeaderText("Please re-enter your password to view statement");
-    passwordDialog.setContentText("Password:");
-    
-    // Make it a password field
-    TextField textField = passwordDialog.getEditor();
-    textField.setPromptText("Enter password");
+
+    // Create password field
+    PasswordField passwordField = new PasswordField();
+    passwordField.setPromptText("Enter password");
+
+    VBox passwordBox = new VBox(10);
+    passwordBox.setPadding(new Insets(20));
+    passwordBox.getChildren().addAll(new Label("Password:"), passwordField);
+
+    passwordDialog.getDialogPane().setContent(passwordBox);
+    passwordDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+    // Return the password when OK is clicked
+    passwordDialog.setResultConverter(dialogButton -> {
+        if (dialogButton == ButtonType.OK) {
+            return passwordField.getText();
+        }
+        return null;
+    });
     
     passwordDialog.showAndWait().ifPresent(password -> {
         try {
@@ -694,22 +713,101 @@ private void showSuccess(String message) {
             showError("Error: " + e.getMessage());
             e.printStackTrace();
         }
-    });
-}
+        });
+    }
     
     private void showTermsAndConditions() {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("Terms & Conditions");
         alert.setHeaderText("Banking Terms & Conditions");
-        alert.setContentText("1. All transactions are final.\n2. Maintain minimum balance of $100.\n3. Withdrawals limited to account balance.\n4. Bank reserves the right to freeze suspicious accounts.\n5. Customer information is kept confidential.");
+        alert.setContentText("1. All transactions are final.\n2. Maintain minimum balance of $100.\n3. Withdrawals limited to account balance.\n4. Bank reserves the right to freeze suspicious accounts.\n5. Customer information is kept confidential.\n 6. Contact the bank on using the following:\ni) Email: sales.bank@example.com\nii) Phone: +1-234-567-8900\n7. The bank is not responsible for any losses due to unauthorized access.\n8. Terms are subject to change without prior notice.");
         alert.showAndWait();
     }
     
     private void showChangePasswordForm() {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Change Password");
-        alert.setHeaderText("Feature Coming Soon");
-        alert.setContentText("Password change form will be implemented here.");
-        alert.showAndWait();
+    // Create dialog
+    Dialog<ButtonType> dialog = new Dialog<>();
+    dialog.setTitle("Change Password");
+    dialog.setHeaderText("Enter your current and new password");
+    
+    GridPane grid = new GridPane();
+    grid.setHgap(10);
+    grid.setVgap(10);
+    grid.setPadding(new Insets(20));
+    
+    PasswordField currentPasswordField = new PasswordField();
+    currentPasswordField.setPromptText("Current Password");
+    
+    PasswordField newPasswordField = new PasswordField();
+    newPasswordField.setPromptText("New Password");
+    
+    PasswordField confirmPasswordField = new PasswordField();
+    confirmPasswordField.setPromptText("Confirm New Password");
+    
+    grid.add(new Label("Current Password:"), 0, 0);
+    grid.add(currentPasswordField, 1, 0);
+    grid.add(new Label("New Password:"), 0, 1);
+    grid.add(newPasswordField, 1, 1);
+    grid.add(new Label("Confirm Password:"), 0, 2);
+    grid.add(confirmPasswordField, 1, 2);
+    
+    dialog.getDialogPane().setContent(grid);
+    dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+    
+    dialog.showAndWait().ifPresent(response -> {
+        if (response == ButtonType.OK) {
+            try {
+                String currentPassword = currentPasswordField.getText();
+                String newPassword = newPasswordField.getText();
+                String confirmPassword = confirmPasswordField.getText();
+                
+                // Validation
+                if (currentPassword.isEmpty() || newPassword.isEmpty() || confirmPassword.isEmpty()) {
+                    showError("All fields are required!");
+                    return;
+                }
+                
+                // Check if new passwords match
+                if (!newPassword.equals(confirmPassword)) {
+                    showError("New passwords do not match!");
+                    return;
+                }
+                
+                // Check password strength (minimum 8 characters)
+                if (newPassword.length() < 8) {
+                    showError("New password must be at least 8 characters long!");
+                    return;
+                }
+                
+                // Verify current password
+                String username = SessionManager.getInstance().getUsername();
+                boolean isValid = userDAO.validateLogin(username, currentPassword);
+                
+                if (!isValid) {
+                    showError("Current password is incorrect!");
+                    return;
+                }
+                
+                // Update password
+                boolean updated = userDAO.updatePassword(username, newPassword);
+                
+                if (updated) {
+                    showSuccess("Password changed successfully!\n\nPlease login again with your new password.");
+                    
+                    // Logout user
+                    SessionManager.getInstance().endSession();
+                    LoginView loginView = new LoginView(stage);
+                    stage.setScene(loginView.createLoginScene());
+                } else {
+                    showError("Failed to update password!");
+                }
+                
+            } catch (Exception e) {
+                showError("Error: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+        });
     }
+
 }
