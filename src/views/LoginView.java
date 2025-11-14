@@ -26,7 +26,7 @@ public class LoginView {
     
     public Scene createLoginScene() {
         // Title
-        Label titleLabel = new Label("Banking System");
+        Label titleLabel = new Label("Nix - My Banking System");
         titleLabel.setFont(Font.font("Arial", FontWeight.BOLD, 28));
         
         Label subtitleLabel = new Label("Login to your account");

@@ -53,6 +53,14 @@ public class AdminDashboard {
         Button createCustomerBtn = new Button("Create Customer");
         createCustomerBtn.setPrefSize(200, 50);
         createCustomerBtn.setOnAction(e -> showCreateCustomerForm());
+
+        Button addAccountBtn = new Button("Add Account to Customer");
+        addAccountBtn.setPrefSize(200, 50);
+        addAccountBtn.setOnAction(e -> showAddAccountForm());
+
+        Button removeAccountBtn = new Button("Remove Account From Customer");
+        removeAccountBtn.setPrefSize(200, 50);
+        removeAccountBtn.setOnAction(e -> showRemoveAccountForm());
         
         Button viewCustomersBtn = new Button("View All Customers");
         viewCustomersBtn.setPrefSize(200, 50);
@@ -76,6 +84,8 @@ public class AdminDashboard {
         menu.setAlignment(Pos.CENTER);
         menu.getChildren().addAll(
             createCustomerBtn,
+            addAccountBtn,
+            removeAccountBtn,
             viewCustomersBtn,
             approveLoansBtn,
             approveOverdraftsBtn,
@@ -592,5 +602,258 @@ private void showSuccess(String message) {
                 }
             }
         });
+    }
+
+
+    private void showAddAccountForm() {
+        try {
+            // First, get all customers
+            String query = "SELECT c.customer_id, c.first_name, c.last_name, u.username " +
+                        "FROM customers c " +
+                        "JOIN users u ON c.user_id = u.user_id " +
+                        "ORDER BY c.last_name, c.first_name";
+            
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(query);
+            ResultSet rs = stmt.executeQuery();
+            
+            // Create customer selection
+            ComboBox<String> customerBox = new ComboBox<>();
+            java.util.HashMap<String, Integer> customerMap = new java.util.HashMap<>();
+            
+            while (rs.next()) {
+                int customerId = rs.getInt("customer_id");
+                String firstName = rs.getString("first_name");
+                String lastName = rs.getString("last_name");
+                String username = rs.getString("username");
+                String display = firstName + " " + lastName + " (" + username + ")";
+                customerBox.getItems().add(display);
+                customerMap.put(display, customerId);
+            }
+            rs.close();
+            stmt.close();
+            conn.close();
+            
+            if (customerBox.getItems().isEmpty()) {
+                showError("No customers found! Create a customer first.");
+                return;
+            }
+            
+            // Create dialog
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Add Account to Customer");
+            dialog.setHeaderText("Create a new account for existing customer");
+            
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(10);
+            grid.setPadding(new Insets(20));
+            
+            ComboBox<String> accountTypeBox = new ComboBox<>();
+            accountTypeBox.getItems().addAll("savings", "current");
+            accountTypeBox.setPromptText("Account Type");
+            
+            TextField initialBalanceField = new TextField();
+            initialBalanceField.setPromptText("Initial Balance");
+            initialBalanceField.setText("0");
+            
+            grid.add(new Label("Select Customer:"), 0, 0);
+            grid.add(customerBox, 1, 0);
+            grid.add(new Label("Account Type:"), 0, 1);
+            grid.add(accountTypeBox, 1, 1);
+            grid.add(new Label("Initial Balance:"), 0, 2);
+            grid.add(initialBalanceField, 1, 2);
+            
+            dialog.getDialogPane().setContent(grid);
+            dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+            
+            dialog.showAndWait().ifPresent(response -> {
+                if (response == ButtonType.OK) {
+                    try {
+                        String selectedCustomer = customerBox.getValue();
+                        String accountType = accountTypeBox.getValue();
+                        
+                        if (selectedCustomer == null) {
+                            showError("Please select a customer!");
+                            return;
+                        }
+                        
+                        if (accountType == null) {
+                            showError("Please select an account type!");
+                            return;
+                        }
+                        
+                        double initialBalance = Double.parseDouble(initialBalanceField.getText());
+                        
+                        if (initialBalance < 0) {
+                            showError("Initial balance cannot be negative!");
+                            return;
+                        }
+                        
+                        // Check if customer already has this account type
+                        int customerId = customerMap.get(selectedCustomer);
+                        ResultSet accountsRs = accountDAO.getAccountsByCustomerId(customerId);
+                        
+                        while (accountsRs.next()) {
+                            String existingType = accountsRs.getString("account_type");
+                            if (existingType.equals(accountType)) {
+                                accountsRs.close();
+                                showError("Customer already has a " + accountType + " account!");
+                                return;
+                            }
+                        }
+                        accountsRs.close();
+                        
+                        // Generate account number
+                        String accountNumber = "ACC" + System.currentTimeMillis();
+                        
+                        // Create account
+                        boolean accountCreated = accountDAO.createAccount(
+                            customerId, accountNumber, accountType, initialBalance
+                        );
+                        
+                        if (accountCreated) {
+                            showSuccess("Account created successfully!\n" +
+                                    "Customer: " + selectedCustomer + "\n" +
+                                    "Account Number: " + accountNumber + "\n" +
+                                    "Type: " + accountType + "\n" +
+                                    "Initial Balance: $" + String.format("%.2f", initialBalance));
+                        } else {
+                            showError("Failed to create account!");
+                        }
+                        
+                    } catch (NumberFormatException e) {
+                        showError("Invalid balance format!");
+                    } catch (Exception e) {
+                        showError("Error: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                }
+            });
+            
+        } catch (Exception e) {
+            showError("Error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void showRemoveAccountForm() {
+        try {
+            // First, get all customers
+            String query = "SELECT c.customer_id, c.first_name, c.last_name, u.username " +
+                        "FROM customers c " +
+                        "JOIN users u ON c.user_id = u.user_id " +
+                        "ORDER BY c.last_name, c.first_name";
+            
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(query);
+            ResultSet rs = stmt.executeQuery();
+            
+            // Create customer selection
+            ComboBox<String> customerBox = new ComboBox<>();
+            java.util.HashMap<String, Integer> customerMap = new java.util.HashMap<>();
+            
+            while (rs.next()) {
+                int customerId = rs.getInt("customer_id");
+                String firstName = rs.getString("first_name");
+                String lastName = rs.getString("last_name");
+                String username = rs.getString("username");
+                String display = firstName + " " + lastName + " (" + username + ")";
+                customerBox.getItems().add(display);
+                customerMap.put(display, customerId);
+            }
+            rs.close();
+            stmt.close();
+            conn.close();
+            
+            if (customerBox.getItems().isEmpty()) {
+                showError("No customers found!");
+                return;
+            }
+            
+            // Create dialog
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Remove Account From Customer");
+            dialog.setHeaderText("Select a customer and account to remove");
+            
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(10);
+            grid.setPadding(new Insets(20));
+            
+            ComboBox<String> accountBox = new ComboBox<>();
+            accountBox.setPromptText("Select Account");
+            
+            grid.add(new Label("Select Customer:"), 0, 0);
+            grid.add(customerBox, 1, 0);
+            grid.add(new Label("Select Account:"), 0, 1);
+            grid.add(accountBox, 1, 1);
+            
+            // When a customer is selected, populate the accounts
+            customerBox.setOnAction(e -> {
+                try {
+                    String selectedCustomer = customerBox.getValue();
+                    if (selectedCustomer == null) return;
+                    
+                    int customerId = customerMap.get(selectedCustomer);
+                    ResultSet accountsRs = accountDAO.getAccountsByCustomerId(customerId);
+                    
+                    accountBox.getItems().clear();
+                    while (accountsRs.next()) {
+                        int accountId = accountsRs.getInt("account_id");
+                        String accountNumber = accountsRs.getString("account_number");
+                        String accountType = accountsRs.getString("account_type");
+                        String display = accountNumber + " (" + accountType + ")";
+                        accountBox.getItems().add(display);
+                    }
+                    accountsRs.close();
+                    
+                } catch (Exception ex) {
+                    showError("Error loading accounts: " + ex.getMessage());
+                }
+            });
+            
+            dialog.getDialogPane().setContent(grid);
+            dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+            
+            dialog.showAndWait().ifPresent(response -> {
+                if (response == ButtonType.OK) {
+                    try {
+                        String selectedAccount = accountBox.getValue();
+                        
+                        if (selectedAccount == null) {
+                            showError("Please select an account to remove!");
+                            return;
+                        }
+                        
+                        // Extract account number from display string
+                        String accountNumber = selectedAccount.split(" ")[0];
+                        int accountId = accountDAO.getAccountIdByAccountNumber(accountNumber);
+                        
+                        if (accountId == -1) {
+                            showError("Could not find the selected account!");
+                            return;
+                        }
+                        
+                        // Delete the account
+                        boolean deleted = accountDAO.deleteAccount(accountId);
+                        
+                        if (deleted) {
+                            showSuccess("Account removed successfully!");
+                        } else {
+                            showError("Failed to remove account!");
+                        }
+                        
+                    } catch (Exception ex) {
+                        showError("Error: " + ex.getMessage());
+                        ex.printStackTrace();
+                    }
+                }
+            });
+            
+        } catch (Exception e) {
+            showError("Error: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

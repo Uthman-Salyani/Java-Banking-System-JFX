@@ -61,6 +61,20 @@ public class AccountDAO {
         }
     }
     
+    public boolean updateOverdraftLimit(int accountId, double newOverdraftLimit) throws SQLException {
+        String query = "UPDATE accounts SET overdraft_limit = ? WHERE account_id = ?";
+        
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setDouble(1, newOverdraftLimit);
+            stmt.setInt(2, accountId);
+            
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        }
+    }
+    
     // Get current balance
     public double getBalance(int accountId) throws SQLException {
         String query = "SELECT balance FROM accounts WHERE account_id = ?";
@@ -107,6 +121,30 @@ public class AccountDAO {
             
             int rowsAffected = stmt.executeUpdate();
             return rowsAffected > 0;
+        }
+    }
+
+    public boolean deleteAccount(int accountId) throws SQLException {
+        String query = "DELETE FROM accounts WHERE account_id = ?";
+        
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setInt(1, accountId);
+            
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        }
+    }
+
+    public void deleteAccountsByCustomerId(int customerId) throws SQLException {
+        String query = "DELETE FROM accounts WHERE customer_id = ?";
+        
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setInt(1, customerId);
+            stmt.executeUpdate();
         }
     }
 }

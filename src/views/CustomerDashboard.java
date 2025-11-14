@@ -42,12 +42,19 @@ public class CustomerDashboard {
         Button logoutButton = new Button("Logout");
         logoutButton.setStyle("-fx-background-color: #f44336; -fx-text-fill: white;");
         logoutButton.setOnAction(e -> logout());
+
+        Button profileButton = new Button("👤");
+        profileButton.setStyle("-fx-font-size: 18; -fx-background-radius: 50; -fx-pref-width: 40px; -fx-pref-height: 40px;");
+        profileButton.setOnAction(e -> showProfileView());
+        Tooltip.install(profileButton, new Tooltip("View Profile"));
         
-        HBox topBar = new HBox(20);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        HBox topBar = new HBox(10);
         topBar.setPadding(new Insets(10));
         topBar.setAlignment(Pos.CENTER_LEFT);
-        topBar.getChildren().addAll(welcomeLabel, logoutButton);
-        HBox.setHgrow(welcomeLabel, Priority.ALWAYS);
+        topBar.getChildren().addAll(welcomeLabel, spacer, profileButton, logoutButton);
         topBar.setStyle("-fx-background-color: #4CAF50;");
         
         // Menu buttons
@@ -163,11 +170,11 @@ public class CustomerDashboard {
             // Get customer's accounts
             int customerId = SessionManager.getInstance().getCustomerId();
             ResultSet rs = accountDAO.getAccountsByCustomerId(customerId);
-            
+
             // Create account selection
             ComboBox<String> accountBox = new ComboBox<>();
             java.util.HashMap<String, Integer> accountMap = new java.util.HashMap<>();
-            
+
             while (rs.next()) {
                 int accountId = rs.getInt("account_id");
                 String accountNumber = rs.getString("account_number");
@@ -177,86 +184,157 @@ public class CustomerDashboard {
                 accountMap.put(display, accountId);
             }
             rs.close();
-            
+
             if (accountBox.getItems().isEmpty()) {
                 showError("No accounts found!");
                 return;
             }
-            
+
             // Create dialog
             Dialog<ButtonType> dialog = new Dialog<>();
             dialog.setTitle("Deposit Money");
             dialog.setHeaderText("Enter deposit details");
-            
+
             GridPane grid = new GridPane();
             grid.setHgap(10);
             grid.setVgap(10);
             grid.setPadding(new Insets(20));
-            
+
             TextField amountField = new TextField();
             amountField.setPromptText("Amount");
-            
+
+            ComboBox<String> methodBox = new ComboBox<>();
+            methodBox.getItems().addAll("Mpesa", "Other");
+            methodBox.setPromptText("Deposit Method");
+
             grid.add(new Label("Select Account:"), 0, 0);
             grid.add(accountBox, 1, 0);
             grid.add(new Label("Amount:"), 0, 1);
             grid.add(amountField, 1, 1);
-            
+            grid.add(new Label("Deposit Method:"), 0, 2);
+            grid.add(methodBox, 1, 2);
+
             dialog.getDialogPane().setContent(grid);
             dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
-            
+
             dialog.showAndWait().ifPresent(response -> {
                 if (response == ButtonType.OK) {
+                    String selectedAccount = accountBox.getValue();
+                    String depositMethod = methodBox.getValue();
+
+                    if (selectedAccount == null) {
+                        showError("Please select an account!");
+                        return;
+                    }
+                    if (depositMethod == null) {
+                        showError("Please select a deposit method!");
+                        return;
+                    }
+
                     try {
-                        String selectedAccount = accountBox.getValue();
-                        if (selectedAccount == null) {
-                            showError("Please select an account!");
-                            return;
-                        }
-                        
                         double amount = Double.parseDouble(amountField.getText());
-                        
                         if (amount <= 0) {
                             showError("Amount must be greater than zero!");
                             return;
                         }
-                        
+
                         int accountId = accountMap.get(selectedAccount);
-                        
-                        // Get current balance
-                        double currentBalance = accountDAO.getBalance(accountId);
-                        double newBalance = currentBalance + amount;
-                        
-                        // Update balance
-                        boolean updated = accountDAO.updateBalance(accountId, newBalance);
-                        
-                        if (updated) {
-                            // Record transaction
-                            transactionDAO.createTransaction(
-                                accountId, 
-                                "deposit", 
-                                amount, 
-                                newBalance, 
-                                "Deposit via customer portal"
-                            );
-                            
-                            showSuccess("Deposit successful!\nNew Balance: $" + String.format("%.2f", newBalance));
-                        } else {
-                            showError("Failed to update balance!");
+
+                        if ("Mpesa".equals(depositMethod)) {
+                            showMpesaDepositDialog(accountId, amount);
+                        } else if ("Other".equals(depositMethod)) {
+                            showSuccess("Other deposit functionalities are in development.");
                         }
-                        
+
                     } catch (NumberFormatException e) {
                         showError("Invalid amount format!");
                     } catch (Exception e) {
-                        showError("Error: " + e.getMessage());
+                        showError("An unexpected error occurred: " + e.getMessage());
                         e.printStackTrace();
                     }
                 }
             });
-            
+
         } catch (Exception e) {
-            showError("Error: " + e.getMessage());
+            showError("Error preparing deposit form: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private void showMpesaDepositDialog(int accountId, double amount) {
+        // Create a new dialog for Mpesa details
+        Dialog<ButtonType> mpesaDialog = new Dialog<>();
+        mpesaDialog.setTitle("Mpesa Deposit");
+        mpesaDialog.setHeaderText("Enter your Mpesa details");
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(20));
+
+        TextField phoneField = new TextField();
+        phoneField.setPromptText("Mpesa Phone Number");
+        PasswordField passwordField = new PasswordField();
+        passwordField.setPromptText("Bank Password");
+
+        grid.add(new Label("Phone Number:"), 0, 0);
+        grid.add(phoneField, 1, 0);
+        grid.add(new Label("Password:"), 0, 1);
+        grid.add(passwordField, 1, 1);
+
+        mpesaDialog.getDialogPane().setContent(grid);
+        mpesaDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        mpesaDialog.showAndWait().ifPresent(response -> {
+            if (response == ButtonType.OK) {
+                String phone = phoneField.getText();
+                String password = passwordField.getText();
+
+                if (phone.isEmpty() || password.isEmpty()) {
+                    showError("Phone number and password are required.");
+                    return;
+                }
+
+                try {
+                    // Verify password
+                    String username = SessionManager.getInstance().getUsername();
+                    if (!userDAO.validateLogin(username, password)) {
+                        showError("Incorrect password!");
+                        return;
+                    }
+
+                    // If password is correct, proceed with deposit logic
+                    double currentBalance = accountDAO.getBalance(accountId);
+                    double newBalance = currentBalance + amount;
+
+                    boolean updated = accountDAO.updateBalance(accountId, newBalance);
+
+                    if (updated) {
+                        transactionDAO.createTransaction(
+                            accountId,
+                            "deposit",
+                            amount,
+                            newBalance,
+                            "Deposit via Mpesa"
+                        );
+                        showMpesaPromptSentDialog();
+                    } else {
+                        showError("Failed to update balance!");
+                    }
+                } catch (Exception e) {
+                    showError("Error during Mpesa deposit: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    private void showMpesaPromptSentDialog() {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Mpesa Prompt");
+        alert.setHeaderText(null);
+        alert.setContentText("A prompt has been sent to your phone.");
+        alert.showAndWait();
     }
 
 private void showError(String message) {
@@ -278,11 +356,11 @@ private void showSuccess(String message) {
             // Get customer's accounts
             int customerId = SessionManager.getInstance().getCustomerId();
             ResultSet rs = accountDAO.getAccountsByCustomerId(customerId);
-            
+
             // Create account selection
             ComboBox<String> accountBox = new ComboBox<>();
             java.util.HashMap<String, Integer> accountMap = new java.util.HashMap<>();
-            
+
             while (rs.next()) {
                 int accountId = rs.getInt("account_id");
                 String accountNumber = rs.getString("account_number");
@@ -293,108 +371,175 @@ private void showSuccess(String message) {
                 accountMap.put(display, accountId);
             }
             rs.close();
-            
+
             if (accountBox.getItems().isEmpty()) {
                 showError("No accounts found!");
                 return;
             }
-            
+
             // Create dialog
             Dialog<ButtonType> dialog = new Dialog<>();
             dialog.setTitle("Withdraw Money");
             dialog.setHeaderText("Enter withdrawal details");
-            
+
             GridPane grid = new GridPane();
             grid.setHgap(10);
             grid.setVgap(10);
             grid.setPadding(new Insets(20));
-            
+
             TextField amountField = new TextField();
             amountField.setPromptText("Amount");
-            
+
+            ComboBox<String> methodBox = new ComboBox<>();
+            methodBox.getItems().addAll("Mpesa", "Other");
+            methodBox.setPromptText("Withdrawal Method");
+
             grid.add(new Label("Select Account:"), 0, 0);
             grid.add(accountBox, 1, 0);
             grid.add(new Label("Amount:"), 0, 1);
             grid.add(amountField, 1, 1);
-            
+            grid.add(new Label("Withdrawal Method:"), 0, 2);
+            grid.add(methodBox, 1, 2);
+
             dialog.getDialogPane().setContent(grid);
             dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
-            
+
             dialog.showAndWait().ifPresent(response -> {
                 if (response == ButtonType.OK) {
+                    String selectedAccount = accountBox.getValue();
+                    String withdrawMethod = methodBox.getValue();
+
+                    if (selectedAccount == null) {
+                        showError("Please select an account!");
+                        return;
+                    }
+                    if (withdrawMethod == null) {
+                        showError("Please select a withdrawal method!");
+                        return;
+                    }
+
                     try {
-                        String selectedAccount = accountBox.getValue();
-                        if (selectedAccount == null) {
-                            showError("Please select an account!");
-                            return;
-                        }
-                        
                         double amount = Double.parseDouble(amountField.getText());
-                        
                         if (amount <= 0) {
                             showError("Amount must be greater than zero!");
                             return;
                         }
-                        
+
                         int accountId = accountMap.get(selectedAccount);
-                        
-                        // Get current balance
-                        double currentBalance = accountDAO.getBalance(accountId);
-                        
-                        // Check if sufficient balance
-                        if (currentBalance < amount) {
-                            showError("Insufficient balance!\nCurrent Balance: $" + String.format("%.2f", currentBalance));
-                            return;
+
+                        if ("Mpesa".equals(withdrawMethod)) {
+                            showMpesaWithdrawDialog(accountId, amount);
+                        } else if ("Other".equals(withdrawMethod)) {
+                            showSuccess("Other withdrawal functionalities are in development.");
                         }
 
-                        double newBalance = currentBalance - amount;
-
-                        // Check minimum balance for savings accounts (get account type first)
-                        ResultSet accountInfo = accountDAO.getAccountById(accountId);
-                        if (accountInfo.next()) {
-                            String accountType = accountInfo.getString("account_type");
-                            
-                            // Savings accounts must maintain minimum $100 balance
-                            if (accountType.equals("savings") && newBalance < 100) {
-                                showError("Savings accounts must maintain a minimum balance of $100!\n" +
-                                        "After withdrawal, your balance would be: $" + String.format("%.2f", newBalance));
-                                accountInfo.close();
-                                return;
-                            }
-                        }
-                        accountInfo.close();
-
-                        // Update balance
-                        boolean updated = accountDAO.updateBalance(accountId, newBalance);
-                        
-                        if (updated) {
-                            // Record transaction
-                            transactionDAO.createTransaction(
-                                accountId, 
-                                "withdrawal", 
-                                amount, 
-                                newBalance, 
-                                "Withdrawal via customer portal"
-                            );
-                            
-                            showSuccess("Withdrawal successful!\nNew Balance: $" + String.format("%.2f", newBalance));
-                        } else {
-                            showError("Failed to update balance!");
-                        }
-                        
                     } catch (NumberFormatException e) {
                         showError("Invalid amount format!");
                     } catch (Exception e) {
-                        showError("Error: " + e.getMessage());
+                        showError("An unexpected error occurred: " + e.getMessage());
                         e.printStackTrace();
                     }
                 }
             });
-            
+
         } catch (Exception e) {
-            showError("Error: " + e.getMessage());
+            showError("Error preparing withdrawal form: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private void showMpesaWithdrawDialog(int accountId, double amount) {
+        // 1. Prompt for phone number
+        TextInputDialog phoneDialog = new TextInputDialog();
+        phoneDialog.setTitle("Mpesa Withdrawal");
+        phoneDialog.setHeaderText("Enter Mpesa phone number to receive funds");
+        phoneDialog.setContentText("Phone Number:");
+
+        phoneDialog.showAndWait().ifPresent(phone -> {
+            if (phone == null || phone.trim().isEmpty()) {
+                showError("Phone number is required.");
+                return;
+            }
+
+            // 2. Prompt for password
+            Dialog<String> passwordDialog = new Dialog<>();
+            passwordDialog.setTitle("Security Verification");
+            passwordDialog.setHeaderText("Please re-enter your password to confirm withdrawal");
+
+            PasswordField passwordField = new PasswordField();
+            passwordField.setPromptText("Enter password");
+
+            VBox passwordBox = new VBox(10);
+            passwordBox.setPadding(new Insets(20));
+            passwordBox.getChildren().addAll(new Label("Password:"), passwordField);
+
+            passwordDialog.getDialogPane().setContent(passwordBox);
+            passwordDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+            passwordDialog.setResultConverter(dialogButton -> {
+                if (dialogButton == ButtonType.OK) {
+                    return passwordField.getText();
+                }
+                return null;
+            });
+
+            passwordDialog.showAndWait().ifPresent(password -> {
+                if (password == null || password.isEmpty()) {
+                    showError("Password is required.");
+                    return;
+                }
+
+                try {
+                    // 3. Verify password
+                    String username = SessionManager.getInstance().getUsername();
+                    if (!userDAO.validateLogin(username, password)) {
+                        showError("Incorrect password!");
+                        return;
+                    }
+
+                    // 4. Perform withdrawal logic
+                    double currentBalance = accountDAO.getBalance(accountId);
+
+                    if (currentBalance < amount) {
+                        showError("Insufficient balance!\nCurrent Balance: $" + String.format("%.2f", currentBalance));
+                        return;
+                    }
+
+                    double newBalance = currentBalance - amount;
+
+                    ResultSet accountInfo = accountDAO.getAccountById(accountId);
+                    if (accountInfo.next()) {
+                        String accountType = accountInfo.getString("account_type");
+                        if (accountType.equals("savings") && newBalance < 100) {
+                            showError("Savings accounts must maintain a minimum balance of $100!\n" +
+                                    "After withdrawal, your balance would be: $" + String.format("%.2f", newBalance));
+                            accountInfo.close();
+                            return;
+                        }
+                    }
+                    accountInfo.close();
+
+                    boolean updated = accountDAO.updateBalance(accountId, newBalance);
+
+                    if (updated) {
+                        transactionDAO.createTransaction(
+                            accountId,
+                            "withdrawal",
+                            amount,
+                            newBalance,
+                            "Withdrawal to Mpesa: " + phone
+                        );
+                        showSuccess("Withdrawal successful!\nNew Balance: $" + String.format("%.2f", newBalance));
+                    } else {
+                        showError("Failed to update balance!");
+                    }
+
+                } catch (Exception e) {
+                    showError("Error during Mpesa withdrawal: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            });
+        });
     }
     
     private void showLoanApplicationForm() {
@@ -411,7 +556,7 @@ private void showSuccess(String message) {
         TextField loanAmountField = new TextField();
         loanAmountField.setPromptText("Loan Amount");
 
-        Label interestRateLabel = new Label("5.5%");  // Show as label, not editable
+        Label interestRateLabel = new Label("5.5% p.a");  // Show as label, not editable
         interestRateLabel.setStyle("-fx-font-weight: bold;");
 
         TextField durationField = new TextField();
@@ -810,4 +955,150 @@ private void showSuccess(String message) {
         });
     }
 
+    private void showProfileView() {
+        try {
+            int userId = SessionManager.getInstance().getUserId();
+            int customerId = SessionManager.getInstance().getCustomerId();
+
+            // Fetch user and customer details
+            ResultSet userRs = userDAO.getUserById(userId);
+            ResultSet customerRs = customerDAO.getCustomerDetails(customerId);
+
+            if (userRs.next() && customerRs.next()) {
+                String username = userRs.getString("username");
+                String userCreated = userRs.getString("created_date");
+                String firstName = customerRs.getString("first_name");
+                String lastName = customerRs.getString("last_name");
+                String email = customerRs.getString("email");
+                String phone = customerRs.getString("phone");
+                String address = customerRs.getString("address");
+                String dob = customerRs.getString("date_of_birth");
+
+                // Create dialog
+                Dialog<ButtonType> dialog = new Dialog<>();
+                dialog.setTitle("My Profile");
+                dialog.setHeaderText("Customer Profile Information");
+
+                GridPane grid = new GridPane();
+                grid.setHgap(10);
+                grid.setVgap(10);
+                grid.setPadding(new Insets(20));
+
+                grid.add(new Label("Full Name:"), 0, 0);
+                grid.add(new Label(firstName + " " + lastName), 1, 0);
+                grid.add(new Label("Username:"), 0, 1);
+                grid.add(new Label(username), 1, 1);
+                grid.add(new Label("Email:"), 0, 2);
+                grid.add(new Label(email), 1, 2);
+                grid.add(new Label("Phone:"), 0, 3);
+                grid.add(new Label(phone), 1, 3);
+                grid.add(new Label("Address:"), 0, 4);
+                grid.add(new Label(address), 1, 4);
+                grid.add(new Label("Date of Birth:"), 0, 5);
+                grid.add(new Label(dob), 1, 5);
+                grid.add(new Label("Profile Created:"), 0, 6);
+                grid.add(new Label(userCreated), 1, 6);
+
+                dialog.getDialogPane().setContent(grid);
+
+                ButtonType optOutButtonType = new ButtonType("Opt Out of Account");
+                dialog.getDialogPane().getButtonTypes().addAll(optOutButtonType, ButtonType.CLOSE);
+
+                // Style the button to be destructive
+                final Button optOutButton = (Button) dialog.getDialogPane().lookupButton(optOutButtonType);
+                optOutButton.setStyle("-fx-background-color: #f44336; -fx-text-fill: white;");
+
+
+                dialog.showAndWait().ifPresent(response -> {
+                    if (response == optOutButtonType) {
+                        handleAccountOptOut();
+                    }
+                });
+
+            } else {
+                showError("Could not retrieve profile information.");
+            }
+
+            userRs.close();
+            customerRs.close();
+
+        } catch (Exception e) {
+            showError("Error displaying profile: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void handleAccountOptOut() {
+        // Step 1: Show a strong warning
+        Alert warningAlert = new Alert(Alert.AlertType.CONFIRMATION);
+        warningAlert.setTitle("Account Deletion Warning");
+        warningAlert.setHeaderText("ARE YOU ABSOLUTELY SURE?");
+        warningAlert.setContentText("This action is irreversible and will permanently delete your entire profile, including all associated accounts, transactions, and loan history. This cannot be undone.\n\nAre you sure you want to proceed?");
+
+        warningAlert.showAndWait().ifPresent(response -> {
+            if (response == ButtonType.OK) {
+                // Step 2: Ask for password confirmation
+                Dialog<String> passwordDialog = new Dialog<>();
+                passwordDialog.setTitle("Security Confirmation");
+                passwordDialog.setHeaderText("Enter your password to confirm account deletion");
+
+                PasswordField passwordField = new PasswordField();
+                VBox content = new VBox(10, new Label("Password:"), passwordField);
+                content.setPadding(new Insets(20));
+                passwordDialog.getDialogPane().setContent(content);
+                passwordDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+                passwordDialog.setResultConverter(dialogButton -> {
+                    if (dialogButton == ButtonType.OK) {
+                        return passwordField.getText();
+                    }
+                    return null;
+                });
+
+                passwordDialog.showAndWait().ifPresent(password -> {
+                    if (password == null || password.isEmpty()) {
+                        showError("Password is required to opt out.");
+                        return;
+                    }
+
+                    try {
+                        String username = SessionManager.getInstance().getUsername();
+                        if (!userDAO.validateLogin(username, password)) {
+                            showError("Incorrect password. Account deletion cancelled.");
+                            return;
+                        }
+
+                        // Step 3: Proceed with deletion
+                        int userId = SessionManager.getInstance().getUserId();
+                        int customerId = SessionManager.getInstance().getCustomerId();
+
+                        // Get all account IDs for the customer
+                        ResultSet accountsRs = accountDAO.getAccountsByCustomerId(customerId);
+                        java.util.List<Integer> accountIds = new java.util.ArrayList<>();
+                        while(accountsRs.next()) {
+                            accountIds.add(accountsRs.getInt("account_id"));
+                        }
+                        accountsRs.close();
+
+                        // Delete all related data in the correct order
+                        for (int accountId : accountIds) {
+                            transactionDAO.deleteTransactionsByAccountId(accountId);
+                            overdraftDAO.deleteOverdraftsByAccountId(accountId);
+                        }
+                        loanDAO.deleteLoansByCustomerId(customerId);
+                        accountDAO.deleteAccountsByCustomerId(customerId);
+                        customerDAO.deleteCustomerByUserId(userId);
+                        userDAO.deleteUserByUserId(userId);
+
+                        showSuccess("Your account has been successfully deleted. We're sorry to see you go.");
+                        logout();
+
+                    } catch (Exception e) {
+                        showError("An error occurred during account deletion: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                });
+            }
+        });
+    }
 }

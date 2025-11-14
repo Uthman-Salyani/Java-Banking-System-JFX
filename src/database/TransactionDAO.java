@@ -58,4 +58,15 @@ public class TransactionDAO {
         stmt.setInt(1, transactionId);
         return stmt.executeQuery();
     }
+
+    public void deleteTransactionsByAccountId(int accountId) throws SQLException {
+        String query = "DELETE FROM transactions WHERE account_id = ?";
+        
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setInt(1, accountId);
+            stmt.executeUpdate();
+        }
+    }
 }

@@ -8,7 +8,7 @@ public class Main extends Application {
     
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("Banking System");
+        primaryStage.setTitle("Nix - My Banking App");
         
         LoginView loginView = new LoginView(primaryStage);
         primaryStage.setScene(loginView.createLoginScene());

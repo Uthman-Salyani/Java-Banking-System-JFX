@@ -45,16 +45,60 @@ public class OverdraftDAO {
     
     // Update overdraft status (approve/decline)
     public boolean updateOverdraftStatus(int overdraftId, String status) throws SQLException {
-        String query = "UPDATE overdrafts SET status = ?, processed_date = CURRENT_TIMESTAMP WHERE overdraft_id = ?";
+        String updateOverdraftQuery = "UPDATE overdrafts SET status = ?, processed_date = CURRENT_TIMESTAMP WHERE overdraft_id = ?";
+        Connection conn = null;
+        PreparedStatement updateOverdraftStmt = null;
         
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false); // Start transaction
             
-            stmt.setString(1, status);
-            stmt.setInt(2, overdraftId);
+            // Update overdraft status
+            updateOverdraftStmt = conn.prepareStatement(updateOverdraftQuery);
+            updateOverdraftStmt.setString(1, status);
+            updateOverdraftStmt.setInt(2, overdraftId);
+            int rowsAffected = updateOverdraftStmt.executeUpdate();
             
-            int rowsAffected = stmt.executeUpdate();
+            if (rowsAffected > 0 && "approved".equalsIgnoreCase(status)) {
+                // Get overdraft details
+                OverdraftDAO overdraftDAO = new OverdraftDAO();
+                ResultSet overdraftRs = overdraftDAO.getOverdraftById(overdraftId);
+                
+                if (overdraftRs.next()) {
+                    int accountId = overdraftRs.getInt("account_id");
+                    double overdraftLimit = overdraftRs.getDouble("overdraft_limit");
+                    
+                    // Update account's overdraft limit
+                    AccountDAO accountDAO = new AccountDAO();
+                    accountDAO.updateOverdraftLimit(accountId, overdraftLimit);
+                }
+            }
+            
+            conn.commit(); // Commit transaction
             return rowsAffected > 0;
+            
+        } catch (SQLException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback(); // Rollback transaction on error
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
+            throw e;
+            
+        } finally {
+            if (updateOverdraftStmt != null) {
+                updateOverdraftStmt.close();
+            }
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+                conn.close();
+            }
         }
     }
     
@@ -67,5 +111,16 @@ public class OverdraftDAO {
         
         stmt.setInt(1, overdraftId);
         return stmt.executeQuery();
+    }
+
+    public void deleteOverdraftsByAccountId(int accountId) throws SQLException {
+        String query = "DELETE FROM overdrafts WHERE account_id = ?";
+        
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setInt(1, accountId);
+            stmt.executeUpdate();
+        }
     }
 }

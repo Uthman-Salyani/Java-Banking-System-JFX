@@ -98,5 +98,14 @@ public class CustomerDAO {
             }
     }
 
-
+    public void deleteCustomerByUserId(int userId) throws SQLException {
+        String query = "DELETE FROM customers WHERE user_id = ?";
+        
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setInt(1, userId);
+            stmt.executeUpdate();
+        }
+    }
 }

@@ -106,4 +106,25 @@ public class UserDAO {
             return rowsAffected > 0;
         }
     }
+
+    public ResultSet getUserById(int userId) throws SQLException {
+        String query = "SELECT * FROM users WHERE user_id = ?";
+        
+        Connection conn = DatabaseConnection.getConnection();
+        PreparedStatement stmt = conn.prepareStatement(query);
+        
+        stmt.setInt(1, userId);
+        return stmt.executeQuery();
+    }
+
+    public void deleteUserByUserId(int userId) throws SQLException {
+        String query = "DELETE FROM users WHERE user_id = ?";
+        
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setInt(1, userId);
+            stmt.executeUpdate();
+        }
+    }
 }

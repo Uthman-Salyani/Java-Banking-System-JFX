@@ -47,16 +47,78 @@ public class LoanDAO {
     
     // Update loan status (approve/decline)
     public boolean updateLoanStatus(int loanId, String status) throws SQLException {
-        String query = "UPDATE loans SET status = ?, processed_date = CURRENT_TIMESTAMP WHERE loan_id = ?";
-        
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
-            
-            stmt.setString(1, status);
-            stmt.setInt(2, loanId);
-            
-            int rowsAffected = stmt.executeUpdate();
+        String updateLoanQuery = "UPDATE loans SET status = ?, processed_date = CURRENT_TIMESTAMP WHERE loan_id = ?";
+        Connection conn = null;
+        PreparedStatement updateLoanStmt = null;
+        PreparedStatement selectLoanStmt = null;
+        ResultSet loanRs = null;
+
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false); // Start transaction
+
+            // Update loan status
+            updateLoanStmt = conn.prepareStatement(updateLoanQuery);
+            updateLoanStmt.setString(1, status);
+            updateLoanStmt.setInt(2, loanId);
+            int rowsAffected = updateLoanStmt.executeUpdate();
+
+            if (rowsAffected > 0 && "approved".equalsIgnoreCase(status)) {
+                // Get loan details using the same connection
+                selectLoanStmt = conn.prepareStatement("SELECT * FROM loans WHERE loan_id = ?");
+                selectLoanStmt.setInt(1, loanId);
+                loanRs = selectLoanStmt.executeQuery();
+
+                if (loanRs.next()) {
+                    int customerId = loanRs.getInt("customer_id");
+                    double loanAmount = loanRs.getDouble("loan_amount");
+
+                    // Get customer's account
+                    AccountDAO accountDAO = new AccountDAO();
+                    ResultSet accountRs = accountDAO.getAccountsByCustomerId(customerId);
+
+                    if (accountRs.next()) {
+                        int accountId = accountRs.getInt("account_id");
+                        double currentBalance = accountDAO.getBalance(accountId);
+                        double newBalance = currentBalance + loanAmount;
+
+                        // Update account balance
+                        accountDAO.updateBalance(accountId, newBalance);
+                    }
+                }
+            }
+
+            conn.commit(); // Commit transaction
             return rowsAffected > 0;
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback(); // Rollback transaction on error
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
+            throw e;
+
+        } finally {
+            if (loanRs != null) {
+                loanRs.close();
+            }
+            if (selectLoanStmt != null) {
+                selectLoanStmt.close();
+            }
+            if (updateLoanStmt != null) {
+                updateLoanStmt.close();
+            }
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+                conn.close();
+            }
         }
     }
     
@@ -69,5 +131,16 @@ public class LoanDAO {
         
         stmt.setInt(1, loanId);
         return stmt.executeQuery();
+    }
+
+    public void deleteLoansByCustomerId(int customerId) throws SQLException {
+        String query = "DELETE FROM loans WHERE customer_id = ?";
+        
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setInt(1, customerId);
+            stmt.executeUpdate();
+        }
     }
 }
